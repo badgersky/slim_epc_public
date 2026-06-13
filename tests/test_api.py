@@ -8,6 +8,7 @@ from epc.models import (
     AddBearerRequest,
     AttachUERequest,
     BearerConfig,
+    StartTrafficRequest,
     ThroughputStats,
     UEState,
 )
@@ -213,3 +214,108 @@ class TestDeleteBearer:
             api.delete_bearer(1, 9, mock_repo)
 
         assert exc.value.status_code == 400
+
+
+# ----------- POST /ues/{id}/bearers/{bid}/traffic - start_traffic ---------------------
+
+class TestStartTraffic:
+    def test_success_configures_bearer(self, mock_repo, tm):
+        mock_repo.get_ue.return_value = make_ue(1)
+        body = StartTrafficRequest(protocol="tcp", Mbps=2)
+
+        resp = api.start_traffic(1, 9, body, mock_repo)
+
+        saved = mock_repo.update_bearer.call_args.args[1]
+        assert saved.protocol == "tcp"
+        assert saved.target_bps == 2_000_000
+        assert saved.active is True
+
+        tm.start.assert_called_once()
+        assert resp.status == "traffic_started"
+        assert resp.target_bps == 2_000_000
+
+    def test_initial_stats_created_when_absent(self, mock_repo, tm):
+        mock_repo.get_ue.return_value = make_ue(1)
+
+        api.start_traffic(
+            1,
+            9,
+            StartTrafficRequest(protocol="tcp", kbps=100),
+            mock_repo,
+        )
+
+        mock_repo.update_stats.assert_called_once()
+        written = mock_repo.update_stats.call_args.args[1]
+        assert written.bearer_id == 9
+        assert written.ue_id == 1
+        assert written.protocol == "tcp"
+        assert written.target_bps == 100_000
+
+    def test_no_initial_stats_when_already_present(self, mock_repo, tm):
+        ue = make_ue(1, stats=[stats_for(bearer_id=9, ue_id=1)])
+        mock_repo.get_ue.return_value = ue
+
+        api.start_traffic(
+            1,
+            9,
+            StartTrafficRequest(protocol="tcp", Mbps=1),
+            mock_repo,
+        )
+
+        mock_repo.update_stats.assert_not_called()
+
+    def test_unknown_ue_maps_to_400(self, mock_repo, tm):
+        mock_repo.get_ue.side_effect = ValueError("UE not found")
+
+        with pytest.raises(HTTPException) as exc:
+            api.start_traffic(
+                1,
+                9,
+                StartTrafficRequest(protocol="tcp", Mbps=1),
+                mock_repo,
+            )
+
+        assert exc.value.status_code == 400
+
+    def test_unknown_bearer_maps_to_400(self, mock_repo, tm):
+        mock_repo.get_ue.return_value = make_ue(1)
+
+        with pytest.raises(HTTPException) as exc:
+            api.start_traffic(
+                1,
+                4,
+                StartTrafficRequest(protocol="tcp", Mbps=1),
+                mock_repo,
+            )
+
+        assert exc.value.status_code == 400
+        assert "not found" in exc.value.detail.lower()
+
+    def test_manager_value_error_maps_to_400(self, mock_repo, tm):
+        mock_repo.get_ue.return_value = make_ue(1)
+        tm.start.side_effect = ValueError("Traffic already running")
+
+        with pytest.raises(HTTPException) as exc:
+            api.start_traffic(
+                1,
+                9,
+                StartTrafficRequest(protocol="tcp", Mbps=1),
+                mock_repo,
+            )
+
+        assert exc.value.status_code == 400
+
+    @pytest.mark.parametrize(
+        "body, expected_bps",
+        [
+            (StartTrafficRequest(protocol="tcp", Mbps=5), 5_000_000),
+            (StartTrafficRequest(protocol="udp", kbps=250), 250_000),
+            (StartTrafficRequest(protocol="tcp", bps=42), 42),
+        ],
+    )
+    def test_target_bps_in_response(self, mock_repo, tm, body, expected_bps):
+        mock_repo.get_ue.return_value = make_ue(1)
+
+        resp = api.start_traffic(1, 9, body, mock_repo)
+
+        assert resp.target_bps == expected_bps
