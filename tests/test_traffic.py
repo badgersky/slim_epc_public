@@ -106,3 +106,50 @@ def test_stop_cancels_future(repo, ue_id, bearer_id, protocol):
     manager.stop(ue_id, bearer_id)
 
     assert future.cancelled() is True
+
+@pytest.mark.parametrize("ue_id", [1, 10, 15])
+@pytest.mark.parametrize("bearer_id", [1, 4, 9])
+@pytest.mark.parametrize("protocol", ["tcp", "udp"])
+def test_stop_all_removes_all_tasks(repo, ue_id, bearer_id, protocol):
+    manager = TrafficGeneratorManager(repo)
+
+    bearer = BearerConfig(
+        bearer_id=bearer_id,
+        target_bps=8000,
+        protocol=protocol,
+    )
+
+    manager.start(ue_id, bearer)
+
+    assert (ue_id, bearer_id) in manager.tasks
+
+    manager.stop_all()
+
+    assert manager.tasks == {}
+
+@pytest.mark.parametrize("ue_id", [1, 10, 15])
+@pytest.mark.parametrize("bearer_id", [1, 4, 9])
+@pytest.mark.parametrize("protocol", ["tcp", "udp"])
+def test_stop_all_cancels_futures(repo, ue_id, bearer_id, protocol):
+    manager = TrafficGeneratorManager(repo)
+
+    bearer = BearerConfig(
+        bearer_id=bearer_id,
+        target_bps=8000,
+        protocol=protocol,
+    )
+
+    manager.start(ue_id, bearer)
+
+    future = manager.tasks[(ue_id, bearer_id)]
+
+    manager.stop_all()
+
+    assert future.cancelled() is True
+
+def test_stop_all_on_empty_manager(repo):
+    manager = TrafficGeneratorManager(repo)
+
+    manager.stop_all()
+
+    assert manager.tasks == {}
