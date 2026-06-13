@@ -1,3 +1,4 @@
 .venv
 epc_simulator.egg-info
 __pycache__
+.pytest_cache
