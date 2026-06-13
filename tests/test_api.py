@@ -1,9 +1,11 @@
 from unittest.mock import MagicMock
 
 import pytest
+from fastapi import HTTPException
 
 from epc import api
 from epc.models import (
+    AttachUERequest,
     BearerConfig,
     ThroughputStats,
     UEState,
@@ -59,8 +61,7 @@ def stats_for(
     )
 
 
-
-# ----------- GET /ues  — list_ues ---------------------
+# ----------- GET /ues - list_ues ---------------------
 
 class TestListUEs:
     def test_returns_ids_from_repo(self, mock_repo):
@@ -76,3 +77,23 @@ class TestListUEs:
         resp = api.list_ues(mock_repo)
 
         assert resp.ues == []
+
+
+# ----------- POST /ues - attach_ue ---------------------
+
+class TestAttachUE:
+    def test_success(self, mock_repo):
+        resp = api.attach_ue(AttachUERequest(ue_id=5), mock_repo)
+
+        mock_repo.attach_ue.assert_called_once_with(5)
+        assert resp.status == "attached"
+        assert resp.ue_id == 5
+
+    def test_value_error_maps_to_400(self, mock_repo):
+        mock_repo.attach_ue.side_effect = ValueError("UE already attached")
+
+        with pytest.raises(HTTPException) as exc:
+            api.attach_ue(AttachUERequest(ue_id=5), mock_repo)
+
+        assert exc.value.status_code == 400
+        assert exc.value.detail == "UE already attached"
