@@ -348,3 +348,64 @@ class TestStopTraffic:
             api.stop_traffic(1, 4, mock_repo)
 
         assert exc.value.status_code == 400
+
+# ----------- GET /ues/{id}/bearers/{bid}/traffic - get_traffic_stats ---------------------
+
+class TestGetTrafficStats:
+    def test_unknown_ue_maps_to_400(self, mock_repo, tm):
+        mock_repo.get_ue.side_effect = ValueError("UE not found")
+
+        with pytest.raises(HTTPException) as exc:
+            api.get_traffic_stats(1, 9, mock_repo)
+
+        assert exc.value.status_code == 400
+
+    def test_no_stats_returns_zeros(self, mock_repo, tm):
+        mock_repo.get_ue.return_value = make_ue(1)
+
+        resp = api.get_traffic_stats(1, 9, mock_repo)
+
+        assert (resp.tx_bps, resp.rx_bps, resp.duration) == (0, 0, 0)
+        assert resp.protocol is None
+        assert resp.target_bps is None
+
+    def test_computes_bps_when_not_running(self, mock_repo, tm):
+        s = stats_for(
+            tx=1000,
+            rx=500,
+            start_ts=100.0,
+            last_ts=102.0,
+            protocol="tcp",
+            target_bps=4000,
+        )
+        mock_repo.get_ue.return_value = make_ue(1, stats=[s])
+        tm.is_running.return_value = False
+
+        resp = api.get_traffic_stats(1, 9, mock_repo)
+
+        assert resp.tx_bps == 4000
+        assert resp.rx_bps == 2000
+        assert resp.duration == pytest.approx(2.0)
+        assert resp.protocol == "tcp"
+        assert resp.target_bps == 4000
+
+    def test_running_uses_now_as_window_end(self, mock_repo, tm, monkeypatch):
+        s = stats_for(tx=1000, rx=0, start_ts=100.0, last_ts=100.0)
+        mock_repo.get_ue.return_value = make_ue(1, stats=[s])
+        tm.is_running.return_value = True
+        monkeypatch.setattr(api.time, "time", lambda: 104.0)
+
+        resp = api.get_traffic_stats(1, 9, mock_repo)
+
+        assert resp.duration == pytest.approx(4.0)
+        assert resp.tx_bps == 2000
+
+    def test_zero_duration_returns_zero_bps(self, mock_repo, tm):
+        s = stats_for(tx=1000, rx=1000, start_ts=100.0, last_ts=100.0)
+        mock_repo.get_ue.return_value = make_ue(1, stats=[s])
+        tm.is_running.return_value = False
+
+        resp = api.get_traffic_stats(1, 9, mock_repo)
+
+        assert (resp.tx_bps, resp.rx_bps) == (0, 0)
+        assert resp.duration == 0
