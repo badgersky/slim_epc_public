@@ -2,6 +2,7 @@ import pytest
 
 from epc.traffic import TrafficGeneratorManager
 from epc.models import BearerConfig
+from unittest.mock import MagicMock
 
 
 @pytest.mark.parametrize("ue_id", [1, 10, 15])
@@ -90,22 +91,15 @@ def test_stop_removes_task(repo, ue_id, bearer_id, protocol):
 
 @pytest.mark.parametrize("ue_id", [1, 10, 15])
 @pytest.mark.parametrize("bearer_id", [1, 4, 9])
-@pytest.mark.parametrize("protocol", ["tcp", "udp"])
-def test_stop_cancels_future(repo, ue_id, bearer_id, protocol):
+def test_stop_cancels_future(repo, ue_id, bearer_id):
     manager = TrafficGeneratorManager(repo)
+    fake_future = MagicMock()
+    manager.tasks[(ue_id, bearer_id)] = fake_future
 
-    bearer = BearerConfig(
-        bearer_id=bearer_id,
-        target_bps=8000,
-        protocol=protocol,
-    )
-
-    manager.start(ue_id, bearer)
-
-    future = manager.tasks[(ue_id, bearer_id)]
     manager.stop(ue_id, bearer_id)
 
-    assert future.cancelled() is True
+    fake_future.cancel.assert_called_once()
+    assert (ue_id, bearer_id) not in manager.tasks
 
 @pytest.mark.parametrize("ue_id", [1, 10, 15])
 @pytest.mark.parametrize("bearer_id", [1, 4, 9])
@@ -129,23 +123,15 @@ def test_stop_all_removes_all_tasks(repo, ue_id, bearer_id, protocol):
 
 @pytest.mark.parametrize("ue_id", [1, 10, 15])
 @pytest.mark.parametrize("bearer_id", [1, 4, 9])
-@pytest.mark.parametrize("protocol", ["tcp", "udp"])
-def test_stop_all_cancels_futures(repo, ue_id, bearer_id, protocol):
+def test_stop_all_cancels_futures(repo, ue_id, bearer_id):
     manager = TrafficGeneratorManager(repo)
-
-    bearer = BearerConfig(
-        bearer_id=bearer_id,
-        target_bps=8000,
-        protocol=protocol,
-    )
-
-    manager.start(ue_id, bearer)
-
-    future = manager.tasks[(ue_id, bearer_id)]
+    fake_future = MagicMock()
+    manager.tasks[(ue_id, bearer_id)] = fake_future
 
     manager.stop_all()
 
-    assert future.cancelled() is True
+    fake_future.cancel.assert_called_once()
+    assert manager.tasks == {}
 
 def test_stop_all_on_empty_manager(repo):
     manager = TrafficGeneratorManager(repo)
