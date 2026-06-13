@@ -4,83 +4,21 @@ from epc.traffic import TrafficGeneratorManager
 from epc.models import BearerConfig
 
 
-def test_start_traffic_bearer1_bps8000_udp(repo):
+@pytest.mark.parametrize("bearer_id", [1, 4, 9])
+@pytest.mark.parametrize("protocol", ["tcp", "udp"])
+def test_start_creates_task(repo, bearer_id, protocol):
     manager = TrafficGeneratorManager(repo)
+
     bearer = BearerConfig(
-        bearer_id=1,
+        bearer_id=bearer_id,
         target_bps=8000,
-        protocol="udp",
+        protocol=protocol,
     )
 
     manager.start(ue_id=1, bearer=bearer)
 
-    assert (1, 1) in manager.tasks
-    assert manager.is_running(1, 1) is True
-
-def test_start_traffic_bearer1_bps8000_tcp(repo):
-    manager = TrafficGeneratorManager(repo)
-    bearer = BearerConfig(
-        bearer_id=1,
-        target_bps=8000,
-        protocol="tcp",
-    )
-
-    manager.start(ue_id=1, bearer=bearer)
-
-    assert (1, 1) in manager.tasks
-    assert manager.is_running(1, 1) is True
-
-def test_start_traffic_bearer9_bps8000_udp(repo):
-    manager = TrafficGeneratorManager(repo)
-    bearer = BearerConfig(
-        bearer_id=9,
-        target_bps=8000,
-        protocol="udp",
-    )
-
-    manager.start(ue_id=1, bearer=bearer)
-
-    assert (1, 9) in manager.tasks
-    assert manager.is_running(1, 9) is True
-
-def test_start_traffic_bearer9_bps8000_tcp(repo):
-    manager = TrafficGeneratorManager(repo)
-    bearer = BearerConfig(
-        bearer_id=9,
-        target_bps=8000,
-        protocol="tcp",
-    )
-
-    manager.start(ue_id=1, bearer=bearer)
-
-    assert (1, 9) in manager.tasks
-    assert manager.is_running(1, 9) is True
-
-def test_start_traffic_bearer4_bps8000_udp(repo):
-    manager = TrafficGeneratorManager(repo)
-    bearer = BearerConfig(
-        bearer_id=4,
-        target_bps=8000,
-        protocol="udp",
-    )
-
-    manager.start(ue_id=1, bearer=bearer)
-
-    assert (1, 4) in manager.tasks
-    assert manager.is_running(1, 4) is True
-
-def test_start_traffic_bearer4_bps8000_tcp(repo):
-    manager = TrafficGeneratorManager(repo)
-    bearer = BearerConfig(
-        bearer_id=4,
-        target_bps=8000,
-        protocol="tcp",
-    )
-
-    manager.start(ue_id=1, bearer=bearer)
-
-    assert (1, 4) in manager.tasks
-    assert manager.is_running(1, 4) is True   
+    assert (1, bearer_id) in manager.tasks
+    assert manager.is_running(1, bearer_id) 
 
 def test_start_duplicate_bearer_raises(repo):
     manager = TrafficGeneratorManager(repo)
