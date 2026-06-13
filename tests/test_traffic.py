@@ -139,3 +139,26 @@ def test_stop_all_on_empty_manager(repo):
     manager.stop_all()
 
     assert manager.tasks == {}
+
+@pytest.mark.parametrize("ue_id", [1, 10, 15])
+@pytest.mark.parametrize("bearer_id", [1, 4, 9])
+@pytest.mark.parametrize("protocol", ["tcp", "udp"])
+def test_is_running_returns_true_after_start(repo, ue_id, bearer_id, protocol):
+    manager = TrafficGeneratorManager(repo)
+
+    bearer = BearerConfig(
+        bearer_id=bearer_id,
+        target_bps=8000,
+        protocol=protocol,
+    )
+
+    manager.start(ue_id, bearer)
+
+    assert manager.is_running(ue_id, bearer_id) is True
+
+@pytest.mark.parametrize("ue_id", [1, 10, 15])
+@pytest.mark.parametrize("bearer_id", [1, 4, 9])
+def test_is_running_returns_false_when_not_started(repo, ue_id, bearer_id):
+    manager = TrafficGeneratorManager(repo)
+
+    assert manager.is_running(ue_id, bearer_id) is False
