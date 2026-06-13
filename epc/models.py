@@ -1,5 +1,22 @@
+"""
+============================================================ short test summary info =============================================================
+FAILED tests/test_models.py::test_start_traffic_request_rejects_throughput_above_100_mbps[kwargs0] - Failed: DID NOT RAISE <class 'pydantic_core._pydantic_core.ValidationError'>
+FAILED tests/test_models.py::test_start_traffic_request_rejects_throughput_above_100_mbps[kwargs1] - Failed: DID NOT RAISE <class 'pydantic_core._pydantic_core.ValidationError'>
+FAILED tests/test_models.py::test_start_traffic_request_rejects_throughput_above_100_mbps[kwargs2] - Failed: DID NOT RAISE <class 'pydantic_core._pydantic_core.ValidationError'>
+FAILED tests/test_models.py::test_start_traffic_request_rejects_negative_throughput[kwargs0] - Failed: DID NOT RAISE <class 'pydantic_core._pydantic_core.ValidationError'>
+FAILED tests/test_models.py::test_start_traffic_request_rejects_negative_throughput[kwargs1] - Failed: DID NOT RAISE <class 'pydantic_core._pydantic_core.ValidationError'>
+FAILED tests/test_models.py::test_start_traffic_request_rejects_negative_throughput[kwargs2] - Failed: DID NOT RAISE <class 'pydantic_core._pydantic_core.ValidationError'>
+FAILED tests/test_models.py::test_start_traffic_request_rejects_negative_throughput[kwargs3] - Failed: DID NOT RAISE <class 'pydantic_core._pydantic_core.ValidationError'>
+7 failed, 41 passed, 2 warnings in 0.27s
+
+added validation and run tests again
+48 passed, 2 warnings in 0.10s
+"""
+
+
 from pydantic import BaseModel, Field, model_validator
 
+MAX_TRAFFIC_BPS = 100_000_000
 
 class BearerConfig(BaseModel):
     bearer_id: int = Field(ge=1, le=9)
@@ -44,15 +61,22 @@ class AddBearerRequest(BaseModel):
 
 class StartTrafficRequest(BaseModel):
     protocol: str = Field(pattern="^(tcp|udp)$")
-    Mbps: float | None = None
-    kbps: float | None = None
-    bps: float | None = None
+    Mbps: float | None = Field(default=None, gt=0)
+    kbps: float | None = Field(default=None, gt=0)
+    bps: float | None = Field(default=None, gt=0)
 
     @model_validator(mode="after")
-    def exactly_one_throughput(self):
+    def validate_throughput(self):
         provided = [v for v in [self.Mbps, self.kbps, self.bps] if v is not None]
         if len(provided) != 1:
             raise ValueError("Provide exactly one throughput value (Mbps, kbps, or bps)")
+
+        target_bps = self.target_bps()
+        if target_bps <= 0:
+            raise ValueError("Throughput must be greater than 0 bps")
+        if target_bps > MAX_TRAFFIC_BPS:
+            raise ValueError("Throughput cannot exceed 100 Mbps")
+
         return self
 
     def target_bps(self) -> int:

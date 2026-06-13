@@ -1,0 +1,4 @@
+.venv
+epc_simulator.egg-info
+.idea
+__pycache__
