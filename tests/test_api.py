@@ -319,3 +319,32 @@ class TestStartTraffic:
         resp = api.start_traffic(1, 9, body, mock_repo)
 
         assert resp.target_bps == expected_bps
+
+# ----------- DELETE /ues/{id}/bearers/{bid}/traffic - stop_traffic ---------------------
+
+class TestStopTraffic:
+    def test_success_marks_inactive(self, mock_repo, tm):
+        mock_repo.get_ue.return_value = make_ue(1)
+
+        resp = api.stop_traffic(1, 9, mock_repo)
+
+        tm.stop.assert_called_once_with(1, 9)
+        saved = mock_repo.update_bearer.call_args.args[1]
+        assert saved.active is False
+        assert resp.status == "traffic_stopped"
+
+    def test_unknown_ue_maps_to_400(self, mock_repo, tm):
+        mock_repo.get_ue.side_effect = ValueError("UE not found")
+
+        with pytest.raises(HTTPException) as exc:
+            api.stop_traffic(1, 9, mock_repo)
+
+        assert exc.value.status_code == 400
+
+    def test_unknown_bearer_maps_to_400(self, mock_repo, tm):
+        mock_repo.get_ue.return_value = make_ue(1)
+
+        with pytest.raises(HTTPException) as exc:
+            api.stop_traffic(1, 4, mock_repo)
+
+        assert exc.value.status_code == 400
