@@ -70,3 +70,62 @@ def test_start_traffic_request_accepts_supported_protocols(protocol):
 def test_start_traffic_request_rejects_unsupported_protocols(protocol):
     with pytest.raises(ValidationError):
         StartTrafficRequest(protocol=protocol, kbps=1)
+
+
+@pytest.mark.parametrize(
+    "kwargs,expected_bps",
+    [
+        ({"Mbps": 1}, 1_000_000),
+        ({"Mbps": 100}, 100_000_000),
+        ({"kbps": 1}, 1_000),
+        ({"kbps": 100_000}, 100_000_000),
+        ({"bps": 1}, 1),
+        ({"bps": 100_000_000}, 100_000_000),
+    ],
+)
+def test_start_traffic_request_converts_throughput_to_target_bps(kwargs, expected_bps):
+    request = StartTrafficRequest(protocol="udp", **kwargs)
+
+    assert request.target_bps() == expected_bps
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {},
+        {"Mbps": 1, "kbps": 1},
+        {"Mbps": 1, "bps": 1},
+        {"kbps": 1, "bps": 1},
+        {"Mbps": 1, "kbps": 1, "bps": 1},
+    ],
+)
+def test_start_traffic_request_requires_exactly_one_throughput_unit(kwargs):
+    with pytest.raises(ValidationError):
+        StartTrafficRequest(protocol="udp", **kwargs)
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"Mbps": 101},
+        {"kbps": 100_001},
+        {"bps": 100_000_001},
+    ],
+)
+def test_start_traffic_request_rejects_throughput_above_100_mbps(kwargs):
+    with pytest.raises(ValidationError):
+        StartTrafficRequest(protocol="udp", **kwargs)
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"Mbps": -1},
+        {"kbps": -0.001},
+        {"kbps": -5_000},
+        {"bps": -1},
+    ],
+)
+def test_start_traffic_request_rejects_negative_throughput(kwargs):
+    with pytest.raises(ValidationError):
+        StartTrafficRequest(protocol="udp", **kwargs)
