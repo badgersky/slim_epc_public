@@ -468,3 +468,43 @@ class TestAggregatedStats:
             api.get_ues_stats(mock_repo, ue_id=5)
 
         assert exc.value.status_code == 400
+
+    def test_include_details_breakdown(self, mock_repo, tm):
+        s = stats_for(
+            bearer_id=9,
+            ue_id=1,
+            tx=1000,
+            rx=0,
+            start_ts=100.0,
+            last_ts=101.0,
+        )
+        mock_repo.ue_exists.return_value = True
+        mock_repo.get_ue.return_value = make_ue(1, stats=[s])
+
+        resp = api.get_ues_stats(mock_repo, ue_id=1, include_details=True)
+
+        assert resp.details == {"1": {"9": 8000}}
+
+    def test_missing_ue_in_all_scope_is_skipped(self, mock_repo, tm):
+        mock_repo.list_ues.return_value = [1, 2]
+        s1 = stats_for(
+            bearer_id=9,
+            ue_id=1,
+            tx=1000,
+            rx=0,
+            start_ts=100.0,
+            last_ts=101.0,
+        )
+
+        def fake_get(uid):
+            if uid == 1:
+                return make_ue(1, stats=[s1])
+            raise ValueError("UE not found")
+
+        mock_repo.get_ue.side_effect = fake_get
+
+        resp = api.get_ues_stats(mock_repo, ue_id=None)
+
+        assert resp.ue_count == 2
+        assert resp.bearer_count == 1
+        assert resp.total_tx_bps == 8000
