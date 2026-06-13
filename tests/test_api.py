@@ -195,3 +195,21 @@ class TestDeleteBearer:
         tm.stop.assert_called_once_with(1, 4)
         mock_repo.delete_bearer.assert_called_once_with(1, 4)
         assert resp.status == "bearer_deleted"
+
+    def test_not_running_traffic_not_stopped(self, mock_repo, tm):
+        mock_repo.get_ue.return_value = make_ue(1, extra_bearers=[4])
+        tm.is_running.return_value = False
+
+        api.delete_bearer(1, 4, mock_repo)
+
+        tm.stop.assert_not_called()
+        mock_repo.delete_bearer.assert_called_once_with(1, 4)
+
+    def test_repo_value_error_maps_to_400(self, mock_repo, tm):
+        mock_repo.get_ue.return_value = make_ue(1)
+        mock_repo.delete_bearer.side_effect = ValueError("Cannot remove default bearer")
+
+        with pytest.raises(HTTPException) as exc:
+            api.delete_bearer(1, 9, mock_repo)
+
+        assert exc.value.status_code == 400
