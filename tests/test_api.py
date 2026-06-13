@@ -117,3 +117,22 @@ class TestGetUE:
             api.get_ue(5, mock_repo)
 
         assert exc.value.status_code == 400
+
+
+# ----------- DELETE /ues/{id} - detach_ue ---------------------
+
+class TestDetachUE:
+    def test_success(self, mock_repo):
+        resp = api.detach_ue(3, mock_repo)
+
+        mock_repo.detach_ue.assert_called_once_with(3)
+        assert resp.status == "detached"
+        assert resp.ue_id == 3
+
+    def test_unknown_maps_to_400(self, mock_repo):
+        mock_repo.detach_ue.side_effect = ValueError("UE not found")
+
+        with pytest.raises(HTTPException) as exc:
+            api.detach_ue(3, mock_repo)
+
+        assert exc.value.status_code == 400
