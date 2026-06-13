@@ -164,3 +164,24 @@ class TestAddBearer:
             api.add_bearer(99, AddBearerRequest(bearer_id=3), mock_repo)
 
         assert exc.value.status_code == 400
+
+
+# ----------- DELETE /ues/{id}/bearers/{bid} - delete_bearer ---------------------
+
+class TestDeleteBearer:
+    def test_unknown_ue_maps_to_400(self, mock_repo, tm):
+        mock_repo.get_ue.side_effect = ValueError("UE not found")
+
+        with pytest.raises(HTTPException) as exc:
+            api.delete_bearer(99, 3, mock_repo)
+
+        assert exc.value.status_code == 400
+
+    def test_bearer_not_present_maps_to_400(self, mock_repo, tm):
+        mock_repo.get_ue.return_value = make_ue(1)
+
+        with pytest.raises(HTTPException) as exc:
+            api.delete_bearer(1, 4, mock_repo)
+
+        assert exc.value.status_code == 400
+        assert "not found" in exc.value.detail.lower()
