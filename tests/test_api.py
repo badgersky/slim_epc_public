@@ -28,7 +28,6 @@ def tm(monkeypatch):
 
 
 def make_ue(ue_id=1, extra_bearers=(), stats=()):
-    """UEState z domyślnym bearerem 9 (jak po realnym attach)."""
     state = UEState(ue_id=ue_id)
     state.bearers[9] = BearerConfig(bearer_id=9)
 
@@ -409,3 +408,63 @@ class TestGetTrafficStats:
 
         assert (resp.tx_bps, resp.rx_bps) == (0, 0)
         assert resp.duration == 0
+
+# ----------- GET /ues/stats - get_ues_stats ---------------------
+
+class TestAggregatedStats:
+    def test_scope_all_sums_across_ues(self, mock_repo, tm):
+        s1 = stats_for(
+            bearer_id=9,
+            ue_id=1,
+            tx=1000,
+            rx=0,
+            start_ts=100.0,
+            last_ts=101.0,
+        )
+        s2 = stats_for(
+            bearer_id=9,
+            ue_id=2,
+            tx=0,
+            rx=2000,
+            start_ts=100.0,
+            last_ts=101.0,
+        )
+        mock_repo.list_ues.return_value = [1, 2]
+        mock_repo.get_ue.side_effect = lambda uid: (
+            make_ue(1, stats=[s1]) if uid == 1 else make_ue(2, stats=[s2])
+        )
+
+        resp = api.get_ues_stats(mock_repo, ue_id=None)
+
+        assert resp.scope == "all"
+        assert resp.ue_count == 2
+        assert resp.bearer_count == 2
+        assert resp.total_tx_bps == 8000
+        assert resp.total_rx_bps == 16000
+        assert resp.details is None
+
+    def test_scope_single_ue(self, mock_repo, tm):
+        s = stats_for(
+            bearer_id=9,
+            ue_id=1,
+            tx=1000,
+            rx=0,
+            start_ts=100.0,
+            last_ts=101.0,
+        )
+        mock_repo.ue_exists.return_value = True
+        mock_repo.get_ue.return_value = make_ue(1, stats=[s])
+
+        resp = api.get_ues_stats(mock_repo, ue_id=1)
+
+        assert resp.scope == "ue:1"
+        assert resp.ue_count == 1
+        assert resp.total_tx_bps == 8000
+
+    def test_unknown_ue_maps_to_400(self, mock_repo, tm):
+        mock_repo.ue_exists.return_value = False
+
+        with pytest.raises(HTTPException) as exc:
+            api.get_ues_stats(mock_repo, ue_id=5)
+
+        assert exc.value.status_code == 400
