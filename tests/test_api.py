@@ -535,3 +535,13 @@ class TestAggregatedStats:
             api.get_ues_stats(mock_repo, ue_id=1)
 
         assert exc.value.status_code == 400
+
+# ----------- POST /reset - reset_all ---------------------
+
+class TestReset:
+    def test_stops_traffic_and_resets_repo(self, mock_repo, tm):
+        resp = api.reset_all(mock_repo)
+
+        tm.stop_all.assert_called_once()
+        mock_repo.reset_all.assert_called_once()
+        assert resp.status == "reset"
