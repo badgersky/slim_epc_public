@@ -97,3 +97,23 @@ class TestAttachUE:
 
         assert exc.value.status_code == 400
         assert exc.value.detail == "UE already attached"
+
+
+# ----------- GET /ues/{id} - get_ue ---------------------
+
+class TestGetUE:
+    def test_success_returns_state(self, mock_repo):
+        mock_repo.get_ue.return_value = make_ue(5)
+
+        resp = api.get_ue(5, mock_repo)
+
+        assert resp.ue_id == 5
+        assert 9 in resp.bearers
+
+    def test_unknown_maps_to_400(self, mock_repo):
+        mock_repo.get_ue.side_effect = ValueError("UE not found")
+
+        with pytest.raises(HTTPException) as exc:
+            api.get_ue(5, mock_repo)
+
+        assert exc.value.status_code == 400
