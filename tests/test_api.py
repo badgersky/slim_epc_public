@@ -508,3 +508,30 @@ class TestAggregatedStats:
         assert resp.ue_count == 2
         assert resp.bearer_count == 1
         assert resp.total_tx_bps == 8000
+
+    def test_bearer_without_start_ts_contributes_zero(self, mock_repo, tm):
+        s = stats_for(
+            bearer_id=9,
+            ue_id=1,
+            tx=5000,
+            rx=5000,
+            start_ts=None,
+            last_ts=None,
+        )
+        mock_repo.ue_exists.return_value = True
+        mock_repo.get_ue.return_value = make_ue(1, stats=[s])
+
+        resp = api.get_ues_stats(mock_repo, ue_id=1)
+
+        assert resp.bearer_count == 1
+        assert resp.total_tx_bps == 0
+        assert resp.total_rx_bps == 0
+
+    def test_single_ue_disappearing_in_loop_maps_to_400(self, mock_repo, tm):
+        mock_repo.ue_exists.return_value = True
+        mock_repo.get_ue.side_effect = ValueError("UE not found")
+
+        with pytest.raises(HTTPException) as exc:
+            api.get_ues_stats(mock_repo, ue_id=1)
+
+        assert exc.value.status_code == 400
