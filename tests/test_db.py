@@ -94,3 +94,136 @@ def test_update_bearer_and_stats(repo):
     assert updated_ue.bearers[5].protocol == "tcp"
     assert updated_ue.stats[5].bytes_tx == 100
     assert updated_ue.stats[5].bytes_rx == 200
+
+def test_list_ues_ordering(repo):
+    # Dodajemy w odwróconej kolejności
+    repo.attach_ue(5)
+    repo.attach_ue(2)
+    repo.attach_ue(8)
+    
+    # list_ues powinno zwracać posortowane po ID
+    assert list(repo.list_ues()) == [2, 5, 8]
+
+def test_delete_bearer_removes_stats(repo):
+    from epc.models import ThroughputStats
+    import time
+    
+    repo.attach_ue(1)
+    repo.add_bearer(1, 4)
+    
+    # Dodajemy statystyki do bearera
+    stats = ThroughputStats(bearer_id=4, ue_id=1, start_ts=time.time(), bytes_tx=500, bytes_rx=500)
+    repo.update_stats(1, stats)
+    
+    # Upewniamy się, że są zapisane
+    ue = repo.get_ue(1)
+    assert 4 in ue.stats
+    
+    # Usuwamy bearera
+    repo.delete_bearer(1, 4)
+    
+    # Sprawdzamy, czy usunięto zarówno bearera jak i jego statystyki
+    ue_after = repo.get_ue(1)
+    assert 4 not in ue_after.bearers
+    assert 4 not in ue_after.stats
+
+def test_operations_on_missing_ue(repo):
+    from epc.models import BearerConfig, ThroughputStats
+    import time
+    
+    # Akcje modyfikujące konkretnego UE powinny rzucać błąd, gdy UE nie istnieje
+    with pytest.raises(ValueError, match="UE not found"):
+        repo.add_bearer(99, 1)
+        
+    with pytest.raises(ValueError, match="UE not found"):
+        repo.delete_bearer(99, 1)
+        
+    with pytest.raises(ValueError, match="UE not found"):
+        repo.update_bearer(99, BearerConfig(bearer_id=1))
+        
+    with pytest.raises(ValueError, match="UE not found"):
+        repo.update_stats(99, ThroughputStats(bearer_id=1, ue_id=99, start_ts=time.time()))
+
+def test_persistence(tmp_path):
+    from epc.db import EPCRepository
+    db_file = tmp_path / "persistent.db"
+    
+    # 1. Tworzymy repozytorium i zapisujemy stan
+    repo1 = EPCRepository(str(db_file))
+    repo1.attach_ue(1)
+    repo1.add_bearer(1, 5)
+    
+    # 2. Tworzymy nowe repozytorium z tego samego pliku (symulacja restartu serwera)
+    repo2 = EPCRepository(str(db_file))
+    ue = repo2.get_ue(1)
+    assert ue.ue_id == 1
+    assert 5 in ue.bearers
+
+def test_volume_attach(repo):
+    # Test obciążeniowy/wolumenowy - dodanie 100 UEs
+    for i in range(1, 101):
+        repo.attach_ue(i)
+    
+    ues = list(repo.list_ues())
+    assert len(ues) == 100
+    assert ues[0] == 1
+    assert ues[-1] == 100
+
+def test_ue_isolation(repo):
+    # Upewniamy się, że modyfikacje jednego UE nie wyciekają do innego
+    repo.attach_ue(1)
+    repo.attach_ue(2)
+    
+    repo.add_bearer(1, 5)
+    
+    ue1 = repo.get_ue(1)
+    ue2 = repo.get_ue(2)
+    
+    assert 5 in ue1.bearers
+    assert 5 not in ue2.bearers
+
+def test_update_bearer_acts_as_upsert(repo):
+    from epc.models import BearerConfig
+    repo.attach_ue(1)
+    
+    # Zgodnie z implementacją, update_bearer zachowuje się jak upsert,
+    # nawet jeśli bearer wcześniej nie został dodany przez add_bearer.
+    # Weryfikujemy to zachowanie, by chronić kontrakt przed niezamierzoną zmianą.
+    repo.update_bearer(1, BearerConfig(bearer_id=4, target_bps=5000, protocol="udp"))
+    
+    ue = repo.get_ue(1)
+    assert 4 in ue.bearers
+    assert ue.bearers[4].target_bps == 5000
+
+def test_ue_exists_false(repo):
+    # Trywialny test metody ue_exists
+    assert repo.ue_exists(99) is False
+
+def test_reset_all_on_empty(repo):
+    # Wywołanie reset_all na pustej bazie nie powinno crashować
+    assert list(repo.list_ues()) == []
+    repo.reset_all()
+    assert list(repo.list_ues()) == []
+
+def test_delete_bearer_stats_independence(repo):
+    from epc.models import ThroughputStats
+    import time
+    
+    repo.attach_ue(1)
+    repo.add_bearer(1, 4)
+    repo.add_bearer(1, 5)
+    
+    repo.update_stats(1, ThroughputStats(bearer_id=4, ue_id=1, start_ts=time.time(), bytes_tx=10))
+    repo.update_stats(1, ThroughputStats(bearer_id=5, ue_id=1, start_ts=time.time(), bytes_tx=20))
+    
+    # Usuwamy tylko bearera 4
+    repo.delete_bearer(1, 4)
+    
+    ue = repo.get_ue(1)
+    # Bearer 5 i jego statystyki powinny pozostać nienaruszone
+    assert 5 in ue.bearers
+    assert 5 in ue.stats
+    assert ue.stats[5].bytes_tx == 20
+    # A bearer 4 usunięty
+    assert 4 not in ue.bearers
+    assert 4 not in ue.stats
