@@ -185,3 +185,13 @@ class TestDeleteBearer:
 
         assert exc.value.status_code == 400
         assert "not found" in exc.value.detail.lower()
+
+    def test_running_traffic_is_stopped_first(self, mock_repo, tm):
+        mock_repo.get_ue.return_value = make_ue(1, extra_bearers=[4])
+        tm.is_running.return_value = True
+
+        resp = api.delete_bearer(1, 4, mock_repo)
+
+        tm.stop.assert_called_once_with(1, 4)
+        mock_repo.delete_bearer.assert_called_once_with(1, 4)
+        assert resp.status == "bearer_deleted"
