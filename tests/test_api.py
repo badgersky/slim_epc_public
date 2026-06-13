@@ -5,6 +5,7 @@ from fastapi import HTTPException
 
 from epc import api
 from epc.models import (
+    AddBearerRequest,
     AttachUERequest,
     BearerConfig,
     ThroughputStats,
@@ -134,5 +135,32 @@ class TestDetachUE:
 
         with pytest.raises(HTTPException) as exc:
             api.detach_ue(3, mock_repo)
+
+        assert exc.value.status_code == 400
+
+
+# ----------- POST /ues/{id}/bearers - add_bearer ---------------------
+
+class TestAddBearer:
+    def test_success(self, mock_repo):
+        resp = api.add_bearer(1, AddBearerRequest(bearer_id=3), mock_repo)
+
+        mock_repo.add_bearer.assert_called_once_with(1, 3)
+        assert resp.status == "bearer_added"
+        assert (resp.ue_id, resp.bearer_id) == (1, 3)
+
+    def test_duplicate_maps_to_400(self, mock_repo):
+        mock_repo.add_bearer.side_effect = ValueError("Bearer already exists")
+
+        with pytest.raises(HTTPException) as exc:
+            api.add_bearer(1, AddBearerRequest(bearer_id=3), mock_repo)
+
+        assert exc.value.status_code == 400
+
+    def test_unknown_ue_maps_to_400(self, mock_repo):
+        mock_repo.add_bearer.side_effect = ValueError("UE not found")
+
+        with pytest.raises(HTTPException) as exc:
+            api.add_bearer(99, AddBearerRequest(bearer_id=3), mock_repo)
 
         assert exc.value.status_code == 400
